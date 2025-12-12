@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Simulateur de caisse (hors ligne)</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    body { margin: 0; background:#0b0c10; color:#e6e6e6; }
+    header { padding: 14px 16px; border-bottom: 1px solid #222; display:flex; gap:10px; align-items:center; }
+    header h1 { font-size: 16px; margin: 0; font-weight: 650; }
+    .wrap { display:grid; grid-template-columns: 1.2fr 1fr; gap: 12px; padding: 12px; }
+    @media (max-width: 980px){ .wrap{ grid-template-columns: 1fr; } }
+    .card { background:#121318; border:1px solid #24262d; border-radius: 14px; overflow:hidden; }
+    .card h2 { margin:0; padding: 10px 12px; font-size: 14px; border-bottom:1px solid #24262d; background:#0f1015; }
+    .pad { padding: 12px; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    label { font-size: 12px; color:#b9bcc7; }
+    input, select, button, textarea {
+      border-radius: 12px; border:1px solid #2a2d36; background:#0d0f14; color:#e6e6e6;
+      padding: 10px 12px; font-size: 14px;
+    }
+    input[type="number"]{ width: 140px; }
+    input[type="text"]{ width: min(520px, 100%); }
+    button { cursor:pointer; background:#161925; }
+    button:hover{ background:#1b2030; }
+    button.primary{ background:#1e3a8a; border-color:#2b4bb6; }
+    button.primary:hover{ background:#2746a8; }
+    button.danger{ background:#3b0a0a; border-color:#5a1212; }
+    button.danger:hover{ background:#4b0e0e; }
+    table { width:100%; border-collapse: collapse; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid #24262d; font-size: 13px; }
+    th { text-align:left; color:#b9bcc7; font-weight: 600; }
+    td.num { text-align:right; font-variant-numeric: tabular-nums; }
+    .muted { color:#a9acb7; font-size: 12px; }
+    .totals { display:grid; grid-template-columns: 1fr auto; gap: 8px; padding: 10px 12px; border-top:1px solid #24262d; background:#0f1015; }
+    .totals div { font-size: 13px; }
+    .totals .big { font-size: 18px; font-weight: 750; }
+    .pill { display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border:1px solid #2a2d36; border-radius:999px; background:#0d0f14; }
+    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 520px){ .grid2{ grid-template-columns: 1fr; } }
+    textarea { width:100%; min-height: 220px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .kbd { border:1px solid #2a2d36; background:#0d0f14; border-radius:10px; padding: 6px 10px; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>🧾 Simulateur de caisse</h1>
+  <span class="muted">Hors ligne • Fichier unique • Compatible Android</span>
+</header>
+
+<div class="wrap">
+
+  <!-- Left: Scan/Add + Cart -->
+  <section class="card">
+    <h2>Scanner / Ajouter un article</h2>
+    <div class="pad">
+      <div class="row">
+        <div>
+          <label>Code-barres / PLU</label><br/>
+          <input id="barcode" type="text" inputmode="numeric" placeholder="ex. 012345678905" />
+          <div class="muted">Astuce : un lecteur de code-barres saisit souvent le code + Entrée.</div>
+        </div>
+        <div>
+          <label>Qté</label><br/>
+          <input id="qty" type="number" min="1" step="1" value="1" />
+        </div>
+        <div style="align-self:flex-end">
+          <button class="primary" id="btnAdd">Ajouter</button>
+        </div>
+      </div>
+
+      <hr style="border:0;border-top:1px solid #24262d; margin:12px 0" />
+
+      <div class="row">
+        <span class="pill">
+          <input id="taxEnabled" type="checkbox" checked />
+          <label for="taxEnabled" style="margin:0">Taxes activées</label>
+        </span>
+
+        <span class="pill">
+          <label for="taxRate" style="margin:0">Taux de taxes</label>
+          <select id="taxRate">
+            <option value="0.05">5 % (TPS)</option>
+            <option value="0.09975">9,975 % (TVQ)</option>
+            <option value="0.14975" selected>14,975 % (TPS+TVQ)</option>
+            <option value="0.13">13 % (TVH)</option>
+            <option value="0.15">15 % (TVH)</option>
+            <option value="0">0 %</option>
+          </select>
+        </span>
+
+        <span class="pill">
+          <label for="priceMode" style="margin:0">Code inconnu</label>
+          <select id="priceMode">
+            <option value="prompt" selected>Demander le nom et le prix</option>
+            <option value="reject">Refuser</option>
+          </select>
+        </span>
+      </div>
+
+      <hr style="border:0;border-top:1px solid #24262d; margin:12px 0" />
+
+      <div class="row" style="justify-content:space-between; align-items:flex-end">
+        <div>
+          <div class="muted">Panier</div>
+          <div class="muted">Cliquez une ligne pour modifier qtée/prix ou supprimer.</div>
+        </div>
+        <div class="row">
+          <button id="btnVoid" class="danger">Annuler la vente</button>
+          <button id="btnSaveDb">Enregistrer la BD d’articles</button>
+        </div>
+      </div>
+
+      <div style="overflow:auto; border:1px solid #24262d; border-radius: 12px; margin-top:10px;">
+        <table id="cartTable">
+          <thead>
+            <tr>
+              <th style="min-width:180px;">Article</th>
+              <th>Code</th>
+              <th class="num">Qté</th>
+              <th class="num">Prix</th>
+              <th class="num">Ligne</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="totals">
+      <div>Sous-total</div><div class="num" id="subtotal">$0.00</div>
+      <div>Taxes</div><div class="num" id="tax">$0.00</div>
+      <div class="big">Total</div><div class="num big" id="total">$0.00</div>
+    </div>
+  </section>
+
+  <!-- Right: Tender + Receipt + DB editor -->
+  <section class="card">
+    <h2>Paiement / Reçu</h2>
+    <div class="pad grid2">
+      <div>
+        <label>Montant remis (comptant)</label><br/>
+        <input id="tendered" type="number" min="0" step="0.01" placeholder="ex. 20.00" />
+        <div class="row" style="margin-top:8px;">
+          <button id="btnPay" class="primary">Payer</button>
+          <button id="btnPrint">Copier le reçu</button>
+        </div>
+        <div style="margin-top:10px;">
+          <div class="muted">Monnaie à remettre</div>
+          <div style="font-size:22px; font-weight:800;" id="change">$0.00</div>
+        </div>
+
+        <hr style="border:0;border-top:1px solid #24262d; margin:12px 0" />
+
+        <div class="muted">Raccourcis</div>
+        <div class="row" style="margin-top:6px;">
+          <span class="kbd">Entrée</span><span class="muted">Ajouter l’article</span>
+          <span class="kbd">Ctrl</span>+<span class="kbd">K</span><span class="muted">Aller au champ code-barres</span>
+        </div>
+
+        <hr style="border:0;border-top:1px solid #24262d; margin:12px 0" />
+
+        <div class="muted">Exemples de codes dans la BD</div>
+        <div class="muted">
+          012345678905 (Lait) • 036000291452 (Pain) • 04963406 (Bananes)
+        </div>
+      </div>
+
+      <div>
+        <label>Reçu</label><br/>
+        <textarea id="receipt" readonly></textarea>
+      </div>
+    </div>
+
+    <h2>Base d’articles (modifiable)</h2>
+    <div class="pad">
+      <div class="muted">Modifiez vos articles ici (JSON). Cliquez « Enregistrer la BD d’articles ». Stocké localement dans votre navigateur.</div>
+
+      <div class="row" style="margin-top:10px;">
+        <input id="fileImport" type="file" accept=".json,.csv,text/csv,application/json" />
+        <button id="btnImportDb">Importer le fichier</button>
+        <button id="btnExportDb">Exporter la BD (JSON)</button>
+      </div>
+      <div class="muted" style="margin-top:6px;">
+        Formats acceptés :
+        <b>JSON</b> (objet) : {"012345678905":{"name":"Lait 2 L","price":4.79}}
+        • <b>CSV</b> : code,name,price (une ligne par article)
+      </div>
+
+      <textarea id="dbEditor"></textarea>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(() => {
+  // ---- Helpers ----
+  const $ = (id) => document.getElementById(id);
+
+  // Keep layout identical; just format money with $ like typical POS screens.
+  const money = (n) => {
+    const x = Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+    return "$" + x.toFixed(2);
+  };
+
+  const nowStamp = () => {
+    const d = new Date();
+    const pad = (v) => String(v).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  };
+
+  // ---- Default item DB (French names) ----
+  const defaultDb = {
+    "012345678905": { name: "Lait 2 L", price: 4.79 },
+    "036000291452": { name: "Pain (miche)", price: 3.29 },
+    "04963406":     { name: "Bananes (lb)", price: 0.79 },
+    "0001":         { name: "PLU Pommes (lb)", price: 1.49 },
+    "0002":         { name: "PLU Tomates (lb)", price: 2.19 }
+  };
+
+  // ---- State ----
+  let db = loadDb();
+  let cart = [];
+
+  function loadDb() {
+    try {
+      const raw = localStorage.getItem("pos_items_db_v1");
+      if (!raw) return structuredClone(defaultDb);
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : structuredClone(defaultDb);
+    } catch {
+      return structuredClone(defaultDb);
+    }
+  }
+
+  function saveDb() {
+    localStorage.setItem("pos_items_db_v1", JSON.stringify(db, null, 2));
+  }
+
+  // ---- UI init ----
+  $("dbEditor").value = JSON.stringify(db, null, 2);
+  $("barcode").focus();
+
+  // ---- Core logic ----
+  function addItemByCode(code, qty) {
+    code = (code || "").trim();
+    qty = Math.max(1, Math.floor(Number(qty || 1)));
+    if (!code) return;
+
+    let item = db[code];
+
+    if (!item) {
+      const mode = $("priceMode").value;
+      if (mode === "reject") {
+        alert("Code-barres/PLU inconnu : " + code);
+        return;
+      }
+
+      const name = prompt("Code inconnu. Entrez le nom de l’article :", "Nouvel article");
+      if (!name) return;
+
+      const priceStr = prompt("Entrez le prix (par unité) :", "1.00");
+      const price = Number(priceStr);
+      if (!Number.isFinite(price) || price < 0) {
+        alert("Prix invalide.");
+        return;
+      }
+
+      item = { name: name.trim(), price: Math.round(price * 100) / 100 };
+      db[code] = item;
+      $("dbEditor").value = JSON.stringify(db, null, 2);
+      saveDb();
+    }
+
+    const existing = cart.find(x => x.code === code && x.price === item.price);
+    if (existing) existing.qty += qty;
+    else cart.push({ code, name: item.name, qty, price: item.price });
+
+    render();
+    $("barcode").value = "";
+    $("qty").value = 1;
+    $("barcode").focus();
+  }
+
+  function calcTotals() {
+    const subtotal = cart.reduce((s, x) => s + x.qty * x.price, 0);
+    const taxEnabled = $("taxEnabled").checked;
+    const taxRate = Number($("taxRate").value || 0);
+    const tax = taxEnabled ? subtotal * taxRate : 0;
+    const total = subtotal + tax;
+    return { subtotal, tax, total };
+  }
+
+  function makeReceipt(changeDue = null, paid = null) {
+    const { subtotal, tax, total } = calcTotals();
+    const lines = [];
+    lines.push("SIMULATEUR CAISSE (HORS LIGNE)");
+    lines.push("Heure : " + nowStamp());
+    lines.push("--------------------------------");
+    cart.forEach(x => {
+      const lineTotal = x.qty * x.price;
+      lines.push(`${x.name}`);
+      lines.push(`  ${x.code}  x${x.qty} @ ${money(x.price)}  = ${money(lineTotal)}`);
+    });
+    lines.push("--------------------------------");
+    lines.push(`Sous-total : ${money(subtotal)}`);
+    lines.push(`Taxes      : ${money(tax)}`);
+    lines.push(`TOTAL      : ${money(total)}`);
+    if (paid != null) lines.push(`Payé       : ${money(paid)}`);
+    if (changeDue != null) lines.push(`Monnaie    : ${money(changeDue)}`);
+    lines.push("--------------------------------");
+    lines.push("Merci !");
+    return lines.join("\n");
+  }
+
+  function render() {
+    const tbody = $("cartTable").querySelector("tbody");
+    tbody.innerHTML = "";
+
+    cart.forEach((x, idx) => {
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      tr.title = "Cliquer pour modifier/supprimer";
+      tr.innerHTML = `
+        <td>${escapeHtml(x.name)}</td>
+        <td>${escapeHtml(x.code)}</td>
+        <td class="num">${x.qty}</td>
+        <td class="num">${money(x.price)}</td>
+        <td class="num">${money(x.qty * x.price)}</td>
+      `;
+      tr.addEventListener("click", () => editLine(idx));
+      tbody.appendChild(tr);
+    });
+
+    const { subtotal, tax, total } = calcTotals();
+    $("subtotal").textContent = money(subtotal);
+    $("tax").textContent = money(tax);
+    $("total").textContent = money(total);
+
+    $("receipt").value = makeReceipt();
+    $("change").textContent = money(0);
+  }
+
+  function editLine(index) {
+    const line = cart[index];
+    if (!line) return;
+
+    const action = prompt(
+      `Modifier la ligne :\n${line.name} (${line.code})\n\nTapez :\n- qte=NOMBRE\n- prix=NOMBRE\n- supprimer\n\nExemple : qte=3`,
+      `qte=${line.qty}`
+    );
+    if (!action) return;
+
+    const a = action.trim().toLowerCase();
+    if (a === "supprimer") {
+      cart.splice(index, 1);
+      render();
+      return;
+    }
+    if (a.startsWith("qte=")) {
+      const n = Math.floor(Number(a.slice(4)));
+      if (Number.isFinite(n) && n > 0) line.qty = n;
+      render();
+      return;
+    }
+    if (a.startsWith("prix=")) {
+      const p = Number(a.slice(5));
+      if (Number.isFinite(p) && p >= 0) line.price = Math.round(p * 100) / 100;
+      render();
+      return;
+    }
+    alert("Commande inconnue.");
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, m => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[m]));
+  }
+
+  // ---- Events ----
+  $("btnAdd").addEventListener("click", () => addItemByCode($("barcode").value, $("qty").value));
+  $("barcode").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") addItemByCode($("barcode").value, $("qty").value);
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey && (e.key.toLowerCase() === "k")) {
+      e.preventDefault();
+      $("barcode").focus();
+    }
+  });
+
+  $("taxEnabled").addEventListener("change", render);
+  $("taxRate").addEventListener("change", render);
+
+  $("btnVoid").addEventListener("click", () => {
+    if (!cart.length) return;
+    if (confirm("Annuler la vente en cours ?")) {
+      cart = [];
+      $("tendered").value = "";
+      render();
+    }
+  });
+
+  $("btnSaveDb").addEventListener("click", () => {
+    try {
+      const parsed = JSON.parse($("dbEditor").value);
+      if (!parsed || typeof parsed !== "object") throw new Error("La BD doit être un objet JSON.");
+      for (const [code, it] of Object.entries(parsed)) {
+        if (!it || typeof it !== "object") throw new Error(`Article invalide : ${code}`);
+        if (typeof it.name !== "string") throw new Error(`Nom manquant : ${code}`);
+        if (!Number.isFinite(Number(it.price))) throw new Error(`Prix invalide : ${code}`);
+        it.price = Math.round(Number(it.price) * 100) / 100;
+      }
+      db = parsed;
+      saveDb();
+      alert("BD d’articles enregistrée localement.");
+    } catch (err) {
+      alert("Échec de l’enregistrement : " + err.message);
+    }
+  });
+
+  // ---- Import / Export DB from file (JSON or CSV) ----
+  function normalizeDbObject(obj) {
+    if (!obj || typeof obj !== "object") throw new Error("Fichier invalide.");
+    const out = {};
+    // Accept either {code:{name,price}} or [{code,name,price}, ...]
+    if (Array.isArray(obj)) {
+      for (const row of obj) {
+        if (!row) continue;
+        const code = String(row.code ?? row.Code ?? row.barcode ?? row.Barcode ?? row.plu ?? row.PLU ?? "").trim();
+        const name = String(row.name ?? row.nom ?? row.Nom ?? "").trim();
+        const price = Number(row.price ?? row.prix ?? row.Prix ?? row.unit_price ?? row.UnitPrice ?? row["unit price"] ?? row["unit_price"]);
+        if (!code || !name || !Number.isFinite(price)) continue;
+        out[code] = { name, price: Math.round(price * 100) / 100 };
+      }
+      return out;
+    }
+
+    for (const [codeRaw, it] of Object.entries(obj)) {
+      const code = String(codeRaw).trim();
+      if (!it || typeof it !== "object") continue;
+      const name = String(it.name ?? it.nom ?? it.Nom ?? "").trim();
+      const price = Number(it.price ?? it.prix ?? it.Prix);
+      if (!code || !name || !Number.isFinite(price)) continue;
+      out[code] = { name, price: Math.round(price * 100) / 100 };
+    }
+    return out;
+  }
+
+  function parseCsv(text) {
+    const lines = text.replace(/\r/g, "").split("\n").filter(l => l.trim().length);
+    if (!lines.length) return {};
+    const header = lines[0].split(",").map(s => s.trim().toLowerCase());
+    const idxCode = header.indexOf("code") !== -1 ? header.indexOf("code") : header.indexOf("barcode");
+    const idxName = header.indexOf("name") !== -1 ? header.indexOf("name") : header.indexOf("nom");
+    const idxPrice = header.indexOf("price") !== -1 ? header.indexOf("price") : header.indexOf("prix");
+    if (idxCode === -1 || idxName === -1 || idxPrice === -1) {
+      throw new Error("CSV : en-têtes requis = code,name,price (ou nom/prix).");
+    }
+    const out = {};
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(","); // simple CSV (no quoted commas)
+      const code = (cols[idxCode] ?? "").trim();
+      const name = (cols[idxName] ?? "").trim();
+      const price = Number((cols[idxPrice] ?? "").trim());
+      if (!code || !name || !Number.isFinite(price)) continue;
+      out[code] = { name, price: Math.round(price * 100) / 100 };
+    }
+    return out;
+  }
+
+  $("btnImportDb").addEventListener("click", async () => {
+    const f = $("fileImport").files && $("fileImport").files[0];
+    if (!f) { alert("Choisissez un fichier .json ou .csv."); return; }
+
+    try {
+      const text = await f.text();
+      let imported = {};
+      const lower = f.name.toLowerCase();
+      if (lower.endsWith(".csv")) {
+        imported = parseCsv(text);
+      } else {
+        const parsed = JSON.parse(text);
+        imported = normalizeDbObject(parsed);
+      }
+
+      const n = Object.keys(imported).length;
+      if (!n) { alert("Aucun article valide trouvé dans le fichier."); return; }
+
+      const overwrite = confirm(
+        `Importer ${n} articles.\n\nOK = ÉCRASER les codes existants si doublons\nAnnuler = Conserver l'existant en cas de doublons`
+      );
+
+      if (overwrite) {
+        db = { ...db, ...imported };
+      } else {
+        for (const [code, it] of Object.entries(imported)) {
+          if (!(code in db)) db[code] = it;
+        }
+      }
+
+      $("dbEditor").value = JSON.stringify(db, null, 2);
+      saveDb();
+      alert(`Import terminé : ${n} articles.`);
+      render();
+    } catch (err) {
+      alert("Import échoué : " + (err?.message || String(err)));
+    } finally {
+      $("fileImport").value = "";
+    }
+  });
+
+  $("btnExportDb").addEventListener("click", () => {
+    try {
+      const blob = new Blob([JSON.stringify(db, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "articles_pos.json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert("Export échoué : " + (err?.message || String(err)));
+    }
+  });
+
+  $("btnPay").addEventListener("click", () => {
+    const { total } = calcTotals();
+    const paid = Number($("tendered").value);
+    if (!Number.isFinite(paid) || paid < 0) { alert("Entrez un montant remis valide."); return; }
+    const change = Math.round((paid - total) * 100) / 100;
+    $("change").textContent = money(change);
+    $("receipt").value = makeReceipt(change, paid);
+  });
+
+  $("btnPrint").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText($("receipt").value);
+      alert("Reçu copié dans le presse-papiers.");
+    } catch {
+      $("receipt").focus();
+      $("receipt").select();
+      alert("Copie bloquée. Le reçu est sélectionné — copiez manuellement.");
+    }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
+
